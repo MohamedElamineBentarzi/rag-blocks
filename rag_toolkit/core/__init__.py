@@ -1,0 +1,37 @@
+"""Core layer: contracts, component model, registry, errors.
+
+Nothing in here knows about RAG specifics — it is the framework the stages
+are built on. Zero third-party dependencies by design.
+"""
+
+from .component import Component
+from .contracts import Chunk, Document, Page, PageSpan, Source, SourceFormat
+from .errors import (
+    ComponentNotFoundError,
+    ConfigError,
+    DuplicateComponentError,
+    OcrError,
+    ParseError,
+    RagToolkitError,
+    UnsupportedFormatError,
+)
+from .registry import Registry, registry
+
+__all__ = [
+    "Component",
+    "Registry",
+    "registry",
+    "Source",
+    "SourceFormat",
+    "Page",
+    "PageSpan",
+    "Document",
+    "Chunk",
+    "RagToolkitError",
+    "ComponentNotFoundError",
+    "DuplicateComponentError",
+    "ConfigError",
+    "UnsupportedFormatError",
+    "ParseError",
+    "OcrError",
+]
