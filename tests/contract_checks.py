@@ -11,7 +11,8 @@ import uuid
 
 import pytest
 
-from rag_toolkit.core.contracts import Source
+from rag_toolkit.chunking.base import Chunker
+from rag_toolkit.core.contracts import Document, Source
 from rag_toolkit.core.errors import StorageError
 from rag_toolkit.ingestion.parsers.base import Parser
 from rag_toolkit.storage.base import BlobStore
@@ -71,3 +72,43 @@ def assert_blob_store_contract(store: BlobStore) -> None:
 
     # 5. Identity is deterministic.
     assert store.fingerprint() == store.fingerprint()
+
+
+def assert_chunker_contract(chunker: Chunker, document: Document) -> None:
+    """Every Chunker (fixed, markdown-aware, your own) must behave like this.
+
+    Note what is deliberately NOT asserted: non-overlap. Overlapping spans are
+    legal — that is how overlap strategies express themselves — so we check
+    ordering of starts, not disjointness.
+    """
+    chunks = list(chunker.chunk(document))
+    if document.markdown.strip():
+        assert chunks, "chunker yielded no chunks for a non-empty document"
+
+    # 1. Index is contiguous, 0-based, no holes (neighbor expansion needs it).
+    assert [c.index for c in chunks] == list(range(len(chunks)))
+
+    starts = []
+    for c in chunks:
+        # 2. Deterministic identity keyed on the document.
+        assert c.id == f"{document.id}:{c.index}"
+        assert c.doc_id == document.id
+
+        # 3. Char offsets are present, in bounds, and slice back to the text
+        #    exactly (coordinates, never a mutated copy).
+        assert c.char_start is not None and c.char_end is not None
+        assert 0 <= c.char_start < c.char_end <= len(document.markdown)
+        assert document.markdown[c.char_start:c.char_end] == c.text
+
+        # 4. Page provenance is ALWAYS filled for a doc-derived chunk.
+        assert c.page_start is not None and c.page_end is not None
+        assert c.page_start <= c.page_end
+        starts.append(c.char_start)
+
+    # 5. Spans arrive in reading order of start (overlaps permitted).
+    assert starts == sorted(starts)
+
+    # 6. Determinism — the eval cache depends on it.
+    again = [c.id for c in chunker.chunk(document)]
+    assert again == [c.id for c in chunks]
+    assert chunker.fingerprint() == chunker.fingerprint()

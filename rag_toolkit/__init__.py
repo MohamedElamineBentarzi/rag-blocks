@@ -46,6 +46,7 @@ from .ingestion import (
     PlainTextParser,
     detect_format,
 )
+from .chunking import Chunker, FixedChunker, MarkdownChunker
 from .storage import BlobStore, LocalBlobStore, MinioBlobStore
 
 __version__ = "0.1.0"
@@ -69,6 +70,9 @@ __all__ = [
     "OcrResult",
     "PageImage",
     "detect_format",
+    "Chunker",
+    "FixedChunker",
+    "MarkdownChunker",
     "BlobStore",
     "LocalBlobStore",
     "MinioBlobStore",

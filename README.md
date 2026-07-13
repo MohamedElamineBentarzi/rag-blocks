@@ -60,6 +60,29 @@ class MyOcrEngine(OcrEngine):
 doc = rk.ingest("scan.pdf", ocr_engine="my-ocr")   # that's it
 ```
 
+## Chunk a document
+
+Chunkers turn a parsed `Document` into retrieval `Chunk`s. A strategy decides
+only *where* to cut (character-offset spans); the base class owns id assignment,
+contiguous indexing, and page provenance — so every chunk can still answer
+"which pages did I come from":
+
+```python
+import rag_toolkit as rk
+from rag_toolkit import FixedChunker, MarkdownChunker
+
+doc = rk.ingest("report.pdf")
+
+chunker = FixedChunker(chunk_chars=1600, overlap_chars=200)  # or by config:
+chunker = rk.registry.create("chunker", "markdown-aware")     # cut at headings
+
+for chunk in chunker.chunk(doc):
+    print(chunk.index, chunk.page_start, chunk.page_end, chunk.text[:80])
+```
+
+`char_start`/`char_end` are the primary provenance; pages are derived from them.
+Overlapping spans are legal — that is how overlap strategies express themselves.
+
 ## Persist raw files
 
 A `BlobStore` is the durable *truth store* for ingested bytes (raw files today,

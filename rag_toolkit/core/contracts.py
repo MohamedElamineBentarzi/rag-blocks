@@ -229,16 +229,27 @@ class Document:
 
 @dataclass
 class Chunk:
-    """A retrieval unit, produced later by the Chunker stage.
+    """A retrieval unit, produced by the Chunker stage.
 
-    Declared here already so the provenance chain is visible end to end:
-    Source → Page → Document(+PageSpan) → Chunk(page_start/page_end).
+    Provenance chain, visible end to end:
+    Source → Page → Document(+PageSpan) → Chunk(char_start/char_end → pages).
+
+    `char_start`/`char_end` are the *primary* provenance — the half-open
+    [start, end) offsets into `document.markdown` the chunk was sliced from.
+    `page_start`/`page_end` are *derived* from them via
+    `Document.pages_for_span`. Both are `Optional` only to allow synthetic
+    chunks (enricher summaries, generated Q/A) that never came from a
+    document's markdown; for any chunk sliced from a parsed document the base
+    chunker ALWAYS fills all four — a doc-derived chunk with `None` here is a
+    bug.
     """
 
     id: str
     doc_id: str
     text: str
     index: int                      # position of the chunk within its document
+    char_start: Optional[int] = None
+    char_end: Optional[int] = None
     page_start: Optional[int] = None
     page_end: Optional[int] = None
     metadata: dict = field(default_factory=dict)
