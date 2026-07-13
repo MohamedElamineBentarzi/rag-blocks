@@ -61,7 +61,7 @@ from .ingestion import (
     detect_format,
 )
 from .chunking import Chunker, FixedChunker, MarkdownChunker
-from .pipeline import IndexingPipeline, QueryPipeline, TraceEvent
+from .pipeline import IndexingPipeline, QueryPipeline, RagPipeline, TraceEvent
 from .reranking import NoOpReranker, Reranker
 from .storage import (
     BM25Index,
@@ -124,6 +124,7 @@ __all__ = [
     "AnthropicGenerator",
     "IndexingPipeline",
     "QueryPipeline",
+    "RagPipeline",
     "TraceEvent",
     "RagToolkitError",
     "StorageError",

@@ -43,16 +43,36 @@ from typing import Callable, Iterable, Iterator, Optional
 
 from .chunking.base import Chunker
 from .chunking.fixed import FixedChunker
-from .core.contracts import Chunk, Document, Query, ScoredChunk, Source, SourceFormat
+from .core.contracts import (
+    Answer,
+    Chunk,
+    Document,
+    Query,
+    ScoredChunk,
+    Source,
+    SourceFormat,
+)
+from .embedding.base import Embedder
+from .embedding.hashing import HashingEmbedder
+from .generation.base import Generator
+from .generation.extractive import ExtractiveGenerator
 from .ingestion.detection import detect_format
 from .ingestion.parsers.auto import AutoParser
 from .ingestion.parsers.base import Parser
 from .reranking.base import Reranker
 from .reranking.noop import NoOpReranker
 from .retrieval.base import Retriever
+from .retrieval.dense import DenseRetriever
 from .storage.base import BlobStore
+from .storage.memory_store import MemoryVectorStore
+from .storage.vector_store import VectorStore
 
-__all__ = ["TraceEvent", "IndexingPipeline", "QueryPipeline"]
+__all__ = [
+    "TraceEvent",
+    "IndexingPipeline",
+    "QueryPipeline",
+    "RagPipeline",
+]
 
 
 @dataclass
@@ -222,6 +242,71 @@ class QueryPipeline:
             {"reranker": self.reranker.name, "results": len(results)},
         ))
         return results
+
+
+class RagPipeline:
+    """Facade: the whole loop in two calls — `index(sources)` then `ask(q)`.
+
+    Owns an IndexingPipeline (parse→chunk), an embedder + vector store (the
+    searchable index it fills), a QueryPipeline (retrieve→rerank), and a
+    generator. `index` embeds chunks in batches and upserts them; `ask` runs a
+    query straight through to a cited Answer.
+
+    Defaults are the zero-dependency stack — `HashingEmbedder`,
+    `MemoryVectorStore`, `ExtractiveGenerator` — so `RagPipeline().index(src)`
+    then `.ask("...")` works out of the box with no extras and no API key. Swap
+    in `SentenceTransformerEmbedder` / `QdrantVectorStore` / `AnthropicGenerator`
+    for production by passing them in — the wiring doesn't change. For hybrid
+    retrieval or other custom shapes, compose `QueryPipeline` + a `Generator`
+    directly; this facade covers the dense 90% case.
+    """
+
+    def __init__(
+        self,
+        embedder: Optional[Embedder] = None,
+        store: Optional[VectorStore] = None,
+        generator: Optional[Generator] = None,
+        parser: Optional[Parser] = None,
+        chunker: Optional[Chunker] = None,
+        reranker: Optional[Reranker] = None,
+        blob_store: Optional[BlobStore] = None,
+        fetch_k: int = 50,
+        batch_size: int = 32,
+        trace: TraceHook = _noop_trace,
+    ) -> None:
+        self.embedder = embedder if embedder is not None else HashingEmbedder()
+        self.store = store if store is not None else MemoryVectorStore()
+        self.generator = (
+            generator if generator is not None else ExtractiveGenerator()
+        )
+        self.batch_size = batch_size
+        self.indexing = IndexingPipeline(parser, chunker, blob_store, trace)
+        retriever = DenseRetriever(embedder=self.embedder, store=self.store)
+        self.query_pipeline = QueryPipeline(retriever, reranker, fetch_k, trace)
+
+    def index(self, sources: Source | Iterable[Source]) -> None:
+        """Ingest, chunk, embed, and upsert — makes `sources` askable.
+
+        Chunks are embedded in batches (O(batch) memory, one embedder call per
+        batch instead of per chunk)."""
+        batch: list[Chunk] = []
+        for chunk in self.indexing.index(sources):
+            batch.append(chunk)
+            if len(batch) >= self.batch_size:
+                self._flush(batch)
+                batch = []
+        if batch:
+            self._flush(batch)
+
+    def ask(self, question: Query | str, k: int = 8) -> Answer:
+        """Retrieve → rerank → generate a cited Answer for `question`."""
+        query = question if isinstance(question, Query) else Query(text=question)
+        context = self.query_pipeline.query(query, k)
+        return self.generator.generate(query, context)
+
+    def _flush(self, chunks: list[Chunk]) -> None:
+        vectors = self.embedder.embed_texts([c.text for c in chunks])
+        self.store.upsert(chunks, vectors)
 
 
 def _ms(start: float) -> float:

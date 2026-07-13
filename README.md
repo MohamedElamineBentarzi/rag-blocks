@@ -60,6 +60,38 @@ class MyOcrEngine(OcrEngine):
 doc = rk.ingest("scan.pdf", ocr_engine="my-ocr")   # that's it
 ```
 
+## Ask a question (the whole loop)
+
+`RagPipeline` is the facade over everything: index files, then ask. The defaults
+are the zero-dependency stack (hashing embedder, in-memory store, extractive
+generator), so this runs with no extras and no API key:
+
+```python
+from rag_toolkit import RagPipeline, Source
+
+rag = RagPipeline()
+rag.index(Source.from_path("report.pdf"))          # parse → chunk → embed → store
+
+answer = rag.ask("What was Q3 revenue?", k=5)      # retrieve → rerank → generate
+print(answer.text)
+for c in answer.citations:                          # each resolves to doc + pages
+    print(f"  [{c.marker}] {c.doc_id} p{c.page_start}-{c.page_end}")
+```
+
+Swap in production components without changing the wiring:
+
+```python
+from rag_toolkit import (
+    RagPipeline, SentenceTransformerEmbedder, QdrantVectorStore, AnthropicGenerator,
+)
+
+rag = RagPipeline(
+    embedder=SentenceTransformerEmbedder(),                 # bge-m3
+    store=QdrantVectorStore(url="http://localhost:6333"),
+    generator=AnthropicGenerator(),                         # claude-opus-4-8
+)
+```
+
 ## Chunk a document
 
 Chunkers turn a parsed `Document` into retrieval `Chunk`s. A strategy decides
