@@ -175,6 +175,18 @@ Planned: `memory` (numpy, for tests and tuning on small corpora), `qdrant`,
 hybrid retrieval composes two narrow interfaces instead of one fat one
 (Interface Segregation).
 
+**BlobStore** (`kind = "blob_store"`, `put`/`get`/`exists` over opaque keys) is
+the companion *truth store* — raw ingested bytes and the parse cache live here
+under content-addressed keys (`raw/{sha256}/original{ext}`), while the vector
+store is derived and rebuildable. Shipped ahead of the v0.3 milestone:
+`LocalBlobStore` (on-disk, zero-dep, default, atomic writes) and `MinioBlobStore`
+(Adapter over the S3-compatible `minio` client — covers MinIO, AWS S3, R2, B2;
+extra `[minio]`). The store attaches no meaning to keys: the content-addressing
+convention lives in the caller, keeping the two implementations interchangeable.
+A BlobStore is a `Component` for identity/config/redaction, but it sits
+*underneath* the fingerprint chain — it is a side-effecting service, not a
+stage-output cache key.
+
 ### 3.6 Retriever
 
 ```python
@@ -419,7 +431,7 @@ rag_toolkit/
   chunking/      recursive, markdown-aware, chonkie adapter    [v0.2]
   enrichment/    contextual retrieval, metadata                [v0.2]
   embedding/     bge-m3, sentence-transformers, API adapters   [v0.3]
-  storage/       memory, qdrant, lancedb + bm25 index          [v0.3]
+  storage/       blob stores local, minio ✓; vector+bm25       [v0.3]
   retrieval/     dense, bm25, hybrid (RRF)                     [v0.4]
   reranking/     bge-reranker, noop                            [v0.4]
   generation/    prompt templates, context packing, citations  [v0.5]

@@ -14,6 +14,7 @@ and streaming that keeps memory flat on 2 000-page PDFs.
 ```bash
 pip install "rag-toolkit[docling]"           # local parsing (default route)
 pip install "rag-toolkit[docling,mistral]"   # + Mistral OCR
+pip install "rag-toolkit[minio]"             # + MinIO / S3-compatible storage
 ```
 
 The core has **zero dependencies**; vendor SDKs are optional extras.
@@ -58,6 +59,32 @@ class MyOcrEngine(OcrEngine):
 
 doc = rk.ingest("scan.pdf", ocr_engine="my-ocr")   # that's it
 ```
+
+## Persist raw files
+
+A `BlobStore` is the durable *truth store* for ingested bytes (raw files today,
+the parse cache next). Same tiny interface on disk or on any S3-compatible
+backend — swap by config, no other code changes:
+
+```python
+from rag_toolkit import LocalBlobStore, MinioBlobStore, Source
+
+# On disk (zero-dep default, atomic writes)
+store = LocalBlobStore(root="./.rag_cache/blobs")
+
+# ...or any S3-compatible backend (MinIO, AWS S3, R2, B2) — needs [minio].
+# Credentials: config wins, else MINIO_ACCESS_KEY / MINIO_SECRET_KEY.
+store = MinioBlobStore(endpoint="localhost:9000", bucket="rag-toolkit")
+
+src = Source.from_path("report.pdf")
+key = f"raw/{src.content_hash()}/original.pdf"   # content-addressed ⇒ dedup free
+if not store.exists(key):                         # cheap pre-check
+    store.put(key, src.open().read())
+assert store.get(key)[:5] == b"%PDF-"
+```
+
+The store treats keys as opaque strings — the content-addressed layout lives in
+your pipeline, so the two implementations stay perfectly interchangeable.
 
 ## Design
 

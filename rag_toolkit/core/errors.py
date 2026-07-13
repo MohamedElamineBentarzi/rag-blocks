@@ -53,3 +53,17 @@ class ParseError(RagToolkitError):
 
 class OcrError(ParseError):
     """Raised when an OCR engine fails on a page image."""
+
+
+class StorageError(RagToolkitError):
+    """Raised when a blob store operation fails.
+
+    Attributes:
+        key: the blob key involved, if applicable — because "write failed"
+            is useless when a pipeline is streaming thousands of blobs.
+    """
+
+    def __init__(self, message: str, *, key: str | None = None) -> None:
+        self.key = key
+        location = f" [key={key}]" if key else ""
+        super().__init__(message + location)

@@ -13,6 +13,7 @@ from .errors import (
     OcrError,
     ParseError,
     RagToolkitError,
+    StorageError,
     UnsupportedFormatError,
 )
 from .registry import Registry, registry
@@ -34,4 +35,5 @@ __all__ = [
     "UnsupportedFormatError",
     "ParseError",
     "OcrError",
+    "StorageError",
 ]

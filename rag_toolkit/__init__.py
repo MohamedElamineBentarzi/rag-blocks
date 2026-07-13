@@ -32,6 +32,7 @@ from .core import (
     RagToolkitError,
     Source,
     SourceFormat,
+    StorageError,
     registry,
 )
 from .ingestion import (
@@ -45,6 +46,7 @@ from .ingestion import (
     PlainTextParser,
     detect_format,
 )
+from .storage import BlobStore, LocalBlobStore, MinioBlobStore
 
 __version__ = "0.1.0"
 
@@ -67,7 +69,11 @@ __all__ = [
     "OcrResult",
     "PageImage",
     "detect_format",
+    "BlobStore",
+    "LocalBlobStore",
+    "MinioBlobStore",
     "RagToolkitError",
+    "StorageError",
 ]
 
 
