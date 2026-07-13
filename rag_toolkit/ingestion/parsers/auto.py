@@ -75,7 +75,11 @@ class AutoParser(Parser):
     def _delegate(self, parser_name: str) -> Parser:
         if parser_name not in self._delegates:
             overrides = self.config.parser_configs.get(parser_name, {})
-            self._delegates[parser_name] = registry.create(
-                "parser", parser_name, **overrides
-            )
+            delegate = registry.create("parser", parser_name, **overrides)
+            if not isinstance(delegate, Parser):
+                raise UnsupportedFormatError(
+                    f"Route target {parser_name!r} is registered but is not a "
+                    "Parser"
+                )
+            self._delegates[parser_name] = delegate
         return self._delegates[parser_name]

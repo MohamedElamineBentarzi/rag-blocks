@@ -67,6 +67,12 @@ class Component(ABC):
     version: ClassVar[str] = "0.1.0"
     Config: ClassVar[Optional[Type[Any]]] = None
 
+    #: The resolved config instance (or None when Config is undeclared).
+    #: Declared as Any so subclasses read `self.config.<field>` without mypy
+    #: narrowing it to `Any | None` at every access — the config's real shape
+    #: is the nested `Config` dataclass, checked where it is constructed.
+    config: Any
+
     def __init__(self, config: Any = None, **overrides: Any) -> None:
         if self.Config is None:
             if config is not None or overrides:

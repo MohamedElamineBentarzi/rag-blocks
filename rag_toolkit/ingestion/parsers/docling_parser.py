@@ -236,6 +236,7 @@ class DoclingParser(Parser):
         Images are produced by a generator and fed to `recognize_batch`, so
         an engine that parallelizes/batches gets the hook while the default
         stays strictly one-image-in-memory."""
+        assert self._ocr is not None  # reached only on the external-engine path
         page_numbers = range(start, end + 1)
         images = (self._render_pdf_page(pdf, p) for p in page_numbers)
         for page_no, result in zip(page_numbers, self._ocr.recognize_batch(images)):
@@ -253,6 +254,7 @@ class DoclingParser(Parser):
 
     def _iter_image_external(self, source: Source) -> Iterator[Page]:
         """Standalone image + external engine: skip Docling entirely."""
+        assert self._ocr is not None  # reached only when an engine is configured
         data = source.head(n=64 * 1024 * 1024)  # images are single-page
         image = PageImage(data=data, page_number=1, mime=_image_mime(data))
         result = self._ocr.recognize(image)
@@ -353,6 +355,11 @@ class DoclingParser(Parser):
         if source.path is not None:
             return str(source.path)
         _, bm, _ = self._load_docling()
+        if source.data is None:
+            raise ParseError(
+                "Source has neither a readable file path nor in-memory bytes",
+                source_uri=source.uri,
+            )
         return bm.DocumentStream(name=source.uri, stream=io.BytesIO(source.data))
 
     # ------------------------------------------------------- pdfium helpers
