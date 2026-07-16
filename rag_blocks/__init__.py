@@ -31,6 +31,7 @@ from .core import (
     Document,
     EmbeddingError,
     EnrichmentError,
+    EvaluationError,
     GenerationError,
     Page,
     PageSpan,
@@ -57,6 +58,14 @@ from .enrichment import (
     ContextualEnricher,
     Enricher,
     HeadingEnricher,
+)
+from .evaluation import (
+    AnswerMatchEvaluator,
+    EvalOutcome,
+    EvalSample,
+    Evaluator,
+    MetricReport,
+    RetrievalEvaluator,
 )
 from .generation import AnthropicGenerator, ExtractiveGenerator, Generator
 from .retrieval import (
@@ -171,6 +180,12 @@ __all__ = [
     "Generator",
     "ExtractiveGenerator",
     "AnthropicGenerator",
+    "Evaluator",
+    "EvalSample",
+    "EvalOutcome",
+    "MetricReport",
+    "RetrievalEvaluator",
+    "AnswerMatchEvaluator",
     "IndexingPipeline",
     "QueryPipeline",
     "RagPipeline",
@@ -180,6 +195,7 @@ __all__ = [
     "EmbeddingError",
     "GenerationError",
     "EnrichmentError",
+    "EvaluationError",
 ]
 
 

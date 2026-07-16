@@ -7,6 +7,7 @@ inherits every guarantee the rest of the pipeline relies on.
 """
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import replace
 
@@ -25,6 +26,7 @@ from rag_blocks.core.contracts import (
 from rag_blocks.core.errors import RagBlocksError, StorageError
 from rag_blocks.embedding.base import Embedder
 from rag_blocks.enrichment.base import Enricher
+from rag_blocks.evaluation.base import EvalOutcome, Evaluator, MetricReport
 from rag_blocks.generation.base import Generator
 from rag_blocks.ingestion.parsers.base import Parser
 from rag_blocks.refinement.base import Refiner
@@ -436,3 +438,53 @@ def assert_generator_contract(
 
     # 3. Deterministic identity (the component, not its output).
     assert generator.fingerprint() == generator.fingerprint()
+
+
+def assert_evaluator_contract(
+    evaluator: Evaluator, outcomes: list[EvalOutcome]
+) -> None:
+    """Every Evaluator (ir, answer-match, ragas, your own) must behave like this.
+
+    `outcomes` must be labeled for THIS evaluator's stage, or there is nothing
+    to score and the checks below are vacuous.
+
+    Note what is deliberately NOT asserted: that a metric lands in [0, 1].
+    Metrics are free to use any scale (a future latency-adjusted or
+    log-likelihood score legitimately would not) — the leaderboard only needs
+    'higher is better' and a finite number.
+    """
+    report = evaluator.evaluate(outcomes)
+    assert isinstance(report, MetricReport)
+
+    # 1. `stage` is declared and is one of the two cost families — the tuner
+    #    reads it to decide what to run in phase 1 vs. phase 2.
+    assert evaluator.stage in ("retrieval", "generation")
+
+    # 2. Aggregate metrics are finite. A NaN silently poisons every average
+    #    and sort downstream of it, so it must never leave an evaluator.
+    assert report.metrics, "evaluator scored nothing on labeled outcomes"
+    for metric, value in report.metrics.items():
+        assert isinstance(metric, str) and metric
+        assert isinstance(value, float) and math.isfinite(value)
+
+    # 3. Per-sample detail is either absent or aligned 1:1 with the outcomes,
+    #    so a caller can always zip it back to the questions.
+    assert len(report.per_sample) in (0, len(outcomes))
+    for scores in report.per_sample:
+        for value in scores.values():
+            assert math.isfinite(value)
+
+    # 4. Empty input is an empty report, not a crash and not a zero: phase 1
+    #    of a tuning run legitimately hands over nothing.
+    empty = evaluator.evaluate([])
+    assert isinstance(empty, MetricReport)
+    assert empty.metrics == {}
+    assert empty.per_sample == ()
+
+    # 5. Scoring is pure — same outcomes, same report. (The eval cache and
+    #    every trial comparison depend on it.) LLM-judged evaluators satisfy
+    #    this through their verdict cache.
+    assert evaluator.evaluate(outcomes).metrics == report.metrics
+
+    # 6. Deterministic identity.
+    assert evaluator.fingerprint() == evaluator.fingerprint()
