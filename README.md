@@ -200,7 +200,7 @@ pipeline = IndexingPipeline(
 )
 
 for chunk in pipeline.index(Source.from_path("report.pdf")):
-    embed_and_store(chunk)        # your v0.3 embedder/vector store goes here
+    embed_and_store(chunk)        # or skip this loop: pass sinks=[chunk_index] (next section)
 ```
 
 Swap the parser, chunker, or blob store by passing a different component — no
@@ -288,7 +288,8 @@ guarantees the rest of the pipeline relies on.
 ## Roadmap
 
 Shipped (0.1 → 0.7): ingestion (streaming parse + OCR routing) · chunking ·
-enrichment · embedding (dense + sparse) · storage (vector + lexical + blob) ·
+enrichment · embedding (dense; the sparse-encoder contract, concrete encoders
+to follow) · storage (vector + lexical + blob) ·
 retrieval & the composition algebra (`ChunkIndex`, fusion, multi-query, HyDE) ·
 refinement chain · generation with citations.
 
