@@ -270,18 +270,33 @@ Owns prompt template + context packing (token budget, ordering, citation
 markers). Returns `Answer` with `citations` resolved through chunk → page
 provenance.
 
-### 3.9 Evaluator
+### 3.9 Evaluator — implemented (v0.8)
 
 ```python
 class Evaluator(Component):
     kind = "evaluator"
-    stage: Literal["retrieval", "generation"]
-    def evaluate(self, dataset: EvalDataset, pipeline: RagPipeline) -> MetricReport: ...
+    stage: ClassVar[Literal["retrieval", "generation"]]
+    def evaluate(self, outcomes: Sequence[EvalOutcome]) -> MetricReport: ...
 ```
+
+Scores outcomes the pipeline **already produced**; it never runs the pipeline
+(DR-0002 — this signature was amended from `evaluate(dataset, pipeline)`,
+which would have made every evaluator reimplement the run loop and depend
+backward on the composition root). The run loop lives once, in the tuner.
 
 Two families with very different costs (see §6): retrieval metrics
 (recall@k, MRR, nDCG — pure math, milliseconds) and generation metrics
-(faithfulness, answer relevancy — LLM-as-judge, cents per sample).
+(faithfulness, answer relevancy — LLM-as-judge, cents per sample). `stage`
+records which, and is what the two-phase screening in §6.3 keys off.
+
+Implementations: `ir` (recall@k/MRR/nDCG, binary relevance), `answer-match`
+(token-F1 + exact match — vendor-free, so the hermetic suite and the tuner can
+score generation with no key), `ragas` (LLM judge, extra `[ragas]`).
+
+**Unlabeled samples are skipped, never scored 0.0** — an aggregate is the mean
+over the labeled subset. `0.0` would read as "the pipeline failed this
+question" when the truth is "we never asked" (DR-0002 §4, the `ocr_applied`
+family of honesty rules).
 
 ---
 
@@ -362,11 +377,19 @@ pipeline configuration, with every trial logged and explainable.**
 ### 6.1 Vocabulary
 
 ```python
-@dataclass
-class EvalSample:      # one row of the user's dataset
+@dataclass(frozen=True)
+class EvalSample:      # one row of the user's dataset — implemented (v0.8)
     question: str
-    relevant_chunk_ids: list[str] | None   # for retrieval metrics
-    reference_answer: str | None           # for generation metrics
+    relevant_chunk_ids: tuple[str, ...] | None = None   # retrieval metrics
+    reference_answer: str | None = None                 # generation metrics
+    filters: dict | None = None
+    metadata: dict = field(default_factory=dict)
+
+@dataclass(frozen=True)
+class EvalOutcome:     # what one pipeline produced for one sample (DR-0002)
+    sample: EvalSample
+    retrieved: tuple[ScoredChunk, ...] = ()
+    answer: Answer | None = None           # None after phase 1: normal, not an error
 
 class SearchSpace:
     """Declarative choices per stage — the tuner's input."""

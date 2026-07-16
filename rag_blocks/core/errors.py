@@ -82,3 +82,13 @@ class GenerationError(RagBlocksError):
 class EnrichmentError(RagBlocksError):
     """Raised when an enricher fails to augment chunks (LLM call, or a missing
     optional dependency)."""
+
+
+class EvaluationError(RagBlocksError):
+    """Raised when an evaluator fails to score outcomes (judge call, or a
+    missing optional dependency).
+
+    Note there is deliberately no `TuningError`: a malformed search space is a
+    configuration mistake and raises `ConfigError` like every other one, and a
+    tuning run's failures are its trials' failures.
+    """
