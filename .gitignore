@@ -90,3 +90,8 @@ Thumbs.db
 .rag_cache/
 *.sqlite
 *.sqlite3
+
+# rag-blocks Studio (optional React app) — node deps and build output.
+# app/public/blocks.json IS committed (generated, but ships with the static site).
+studio/app/node_modules/
+studio/app/dist/
