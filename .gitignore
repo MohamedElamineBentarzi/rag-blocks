@@ -4,6 +4,7 @@
 
 # Local scratch / generated docs (not part of the repo)
 tump_docs/
+hotpotqa_generation/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
