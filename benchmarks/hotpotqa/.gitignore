@@ -1,0 +1,10 @@
+# The HotpotQA-derived dataset is generated locally and never committed:
+#   * it is CC BY-SA 4.0 — this repo is Apache-2.0 (see README.md, "Licensing")
+#   * it is large and fully reproducible from the prompt in
+#     tump_docs/hotpotqa-generation-prompt.md
+#
+# Keep this folder's README and this .gitignore tracked; ignore everything else
+# (corpus/, qa.jsonl, config.json, run.py, ATTRIBUTION.md, any caches).
+*
+!.gitignore
+!README.md

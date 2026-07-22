@@ -1,0 +1,11 @@
+# The Open-RAG-Bench-derived dataset is generated locally and never committed:
+#   * it is CC BY-NC 4.0 (non-commercial) — this repo is Apache-2.0
+#     (see README.md, "Licensing"); vendoring NC data would taint the tree
+#   * it is large (≈1000 full arXiv papers) and fully reproducible from
+#     generate.py
+#
+# Keep this folder's README and this .gitignore tracked; ignore everything else
+# (corpus/, qa.jsonl, config.json, run.py, generate.py, ATTRIBUTION.md, caches).
+*
+!.gitignore
+!README.md
