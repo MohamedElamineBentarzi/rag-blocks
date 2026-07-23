@@ -45,6 +45,11 @@ _STORAGE_BASES = (BlobStore, VectorStore)
 #: the two the builder supplies itself (`config`, the live `index`).
 _WIRING_PARAMS = frozenset({"self", "config", "index"})
 
+#: Composition the builder wires from *nested sub-specs* (`inner`, `retrievers`)
+#: or the generator's LLM seam (`complete`) — so these params don't block export
+#: and aren't flat form fields; the Studio inspector renders them specially.
+_HANDLED_COMPOSITION = frozenset({"inner", "retrievers", "complete"})
+
 #: Credential markers — a field whose value is a secret that must never enter a
 #: spec (§7.4): rendered as a password field, dropped on export.
 #:
@@ -88,8 +93,8 @@ STAGE_IO: dict[str, dict[str, Any]] = {
     "generator": {"in": [SCORED],              "out": "Answer"},
     # Infrastructure: no data inputs; each is a dependency wired into a node
     # (Store -> ChunkIndex, BlobStore -> parser).
-    "store":      {"in": [],                   "out": "Store"},
-    "blob_store": {"in": [],                   "out": "BlobStore"},
+    "vector_store": {"in": [],                 "out": "Store"},
+    "blob_store":   {"in": [],                 "out": "BlobStore"},
 }
 
 # One synthetic node, not a registry stage: representation blocks
@@ -150,6 +155,7 @@ def _stages() -> list[dict]:
 def _component(stage: str, name: str) -> dict:
     cls = registry.get(SPEC_KINDS[stage], name)
     exportable, blocker = _exportability(cls)
+    slot, needs_llm = _composite_shape(cls)
     entry: dict[str, Any] = {
         "kind": stage,
         "name": name,
@@ -159,6 +165,12 @@ def _component(stage: str, name: str) -> dict:
         "exportable": exportable,
         "params": _params(cls),
     }
+    if slot is not None:
+        # A composite retriever: its sub-retrievers nest under this key.
+        entry["composite"] = slot
+    if needs_llm:
+        # Shapes the query with an LLM — wired from the pipeline's generator.
+        entry["needs_llm"] = True
     if not exportable:
         # Surfaced as a tooltip so the palette can explain *why* a block is
         # greyed out (it needs another component / a callable a flat spec can't
@@ -195,9 +207,19 @@ def _exportability(cls: type) -> tuple[bool, str | None]:
     once here so the palette greys out only the blocks that truly can't export.
     """
     for pname, hint in _ctor_params(cls):
+        if pname in _HANDLED_COMPOSITION:
+            continue  # builder wires these (nested sub-specs / generator.complete)
         if _blocks_export(hint):
             return False, pname
     return True, None
+
+
+def _composite_shape(cls: type) -> tuple[str | None, bool]:
+    """How this component nests others: `retrievers` (fusion) or `inner` (hyde/
+    multi-query), and whether it shapes the query with an LLM (`complete`)."""
+    names = {pname for pname, _ in _ctor_params(cls)}
+    slot = "retrievers" if "retrievers" in names else "inner" if "inner" in names else None
+    return slot, "complete" in names
 
 
 def _params(cls: type) -> list[dict]:
@@ -211,9 +233,10 @@ def _params(cls: type) -> list[dict]:
     seen: set[str] = set()
 
     # 1. Constructor-level params that aren't wiring and aren't components/
-    #    callables (those make the block non-exportable and are skipped).
+    #    callables. Composition slots (inner/retrievers/complete) are wired
+    #    specially, not offered as flat form fields.
     for pname, hint in _ctor_params(cls):
-        if _is_component_or_callable(hint):
+        if pname in _HANDLED_COMPOSITION or _is_component_or_callable(hint):
             continue
         kind, choices = _param_type(hint)
         default = _ctor_default(cls, pname)

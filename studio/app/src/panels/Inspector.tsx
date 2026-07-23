@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useStudio } from "../graph/store";
+import type { ManifestIndex } from "../manifest/load";
+import type { BlockNode, SubRetriever } from "../graph/model";
 import type { ComponentSpec, ParamSpec } from "../manifest/types";
 
 // The right drawer: configure the selected block, or read how it works. Both
@@ -12,6 +14,7 @@ export function Inspector() {
   const node = useStudio((s) => s.nodes.find((n) => n.id === s.selectedId));
   const mIndex = useStudio((s) => s.mIndex);
   const updateParams = useStudio((s) => s.updateParams);
+  const updateData = useStudio((s) => s.updateData);
 
   if (!node || !mIndex) {
     return (
@@ -63,17 +66,156 @@ export function Inspector() {
       </div>
 
       {tab === "config" ? (
-        <ConfigForm
-          key={selectedId ?? ""}
-          comp={comp}
-          params={node.data.params}
-          onChange={(params) => updateParams(node.id, params)}
-        />
+        <>
+          <ConfigForm
+            key={selectedId ?? ""}
+            comp={comp}
+            params={node.data.params}
+            onChange={(params) => updateParams(node.id, params)}
+          />
+          {comp.composite && (
+            <CompositeEditor
+              comp={comp}
+              node={node}
+              mIndex={mIndex}
+              onPatch={(patch) => updateData(node.id, patch)}
+            />
+          )}
+        </>
       ) : (
         <InfoView comp={comp} />
       )}
     </div>
   );
+}
+
+// A composite retriever's nested sub-retriever(s), configured here rather than
+// as separate graph nodes — so the canvas keeps its clean single-output
+// retriever ports (progressive disclosure; the nesting is the rare case).
+function CompositeEditor({
+  comp,
+  node,
+  mIndex,
+  onPatch,
+}: {
+  comp: ComponentSpec;
+  node: BlockNode;
+  mIndex: ManifestIndex;
+  onPatch: (patch: { inner?: SubRetriever; retrievers?: SubRetriever[] }) => void;
+}) {
+  const bases = mIndex.baseRetrievers();
+  return (
+    <div className="composite">
+      <div className="composite-head">
+        {comp.composite === "inner" ? "Inner retriever" : "Fused retrievers"}
+      </div>
+      {comp.needs_llm && (
+        <div className="hint llm">
+          Shapes the query with the pipeline&rsquo;s generator LLM — add an LLM generator
+          (e.g. anthropic) for this to run.
+        </div>
+      )}
+      {comp.composite === "inner" && (
+        <SubRetrieverEditor
+          value={node.data.inner ?? defaultSub(mIndex)}
+          bases={bases}
+          mIndex={mIndex}
+          onChange={(sub) => onPatch({ inner: sub })}
+        />
+      )}
+      {comp.composite === "retrievers" && (
+        <RetrieverList
+          value={node.data.retrievers ?? []}
+          bases={bases}
+          mIndex={mIndex}
+          onChange={(list) => onPatch({ retrievers: list })}
+        />
+      )}
+    </div>
+  );
+}
+
+function RetrieverList({
+  value,
+  bases,
+  mIndex,
+  onChange,
+}: {
+  value: SubRetriever[];
+  bases: ComponentSpec[];
+  mIndex: ManifestIndex;
+  onChange: (list: SubRetriever[]) => void;
+}) {
+  return (
+    <div>
+      {value.map((sub, i) => (
+        <SubRetrieverEditor
+          key={i}
+          value={sub}
+          bases={bases}
+          mIndex={mIndex}
+          onChange={(s) => onChange(value.map((v, j) => (j === i ? s : v)))}
+          onRemove={() => onChange(value.filter((_, j) => j !== i))}
+        />
+      ))}
+      {value.length === 0 && <div className="hint">Add at least one retriever to fuse.</div>}
+      <button
+        className="sub-add"
+        onClick={() => onChange([...value, defaultSub(mIndex)])}
+      >
+        + add retriever
+      </button>
+    </div>
+  );
+}
+
+function SubRetrieverEditor({
+  value,
+  bases,
+  mIndex,
+  onChange,
+  onRemove,
+}: {
+  value: SubRetriever;
+  bases: ComponentSpec[];
+  mIndex: ManifestIndex;
+  onChange: (sub: SubRetriever) => void;
+  onRemove?: () => void;
+}) {
+  const comp = mIndex.component("retriever", value.name);
+  return (
+    <div className="sub-retriever">
+      <div className="sub-head">
+        <select
+          value={value.name}
+          onChange={(e) =>
+            onChange({ name: e.target.value, params: mIndex.defaultParams("retriever", e.target.value) })
+          }
+        >
+          {bases.map((b) => (
+            <option key={b.name} value={b.name}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+        {onRemove && (
+          <button className="sub-remove" onClick={onRemove} aria-label="Remove">
+            ×
+          </button>
+        )}
+      </div>
+      {comp && comp.params.length > 0 && (
+        <ConfigForm comp={comp} params={value.params} onChange={(params) => onChange({ name: value.name, params })} />
+      )}
+    </div>
+  );
+}
+
+function defaultSub(mIndex: ManifestIndex): SubRetriever {
+  const base = mIndex.baseRetrievers()[0];
+  return base
+    ? { name: base.name, params: mIndex.defaultParams("retriever", base.name) }
+    : { name: "", params: {} };
 }
 
 function ConfigForm({

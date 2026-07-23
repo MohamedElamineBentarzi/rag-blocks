@@ -1,7 +1,14 @@
 import dagre from "@dagrejs/dagre";
 import type { ManifestIndex } from "../manifest/load";
-import type { BlockNode, BlockEdge } from "../graph/model";
+import type { BlockNode, BlockEdge, SubRetriever } from "../graph/model";
 import { handleId } from "../graph/ports";
+
+interface RetrieverEntry {
+  name: string;
+  params?: Record<string, unknown>;
+  inner?: RetrieverEntry;
+  retrievers?: RetrieverEntry[];
+}
 
 // Rebuild a canvas graph from a flat spec — the inverse of compileSpec, closing
 // the round trip with save_spec/load_spec. The spec has no positions or edges,
@@ -52,14 +59,29 @@ export function importSpec(
     const list = (spec[kind] as { name: string; params?: Record<string, unknown> }[]) ?? [];
     return list.map((e) => mk(kind, e.name, e.params ?? {}));
   };
+  // A retriever, possibly composite: its nested sub-retrievers land in node.data
+  // (configured in the inspector), not as separate graph nodes.
+  const subFromSpec = (e: RetrieverEntry): SubRetriever => {
+    const params: Record<string, unknown> = {};
+    for (const p of mIndex.component("retriever", e.name)?.params ?? []) params[p.name] = p.default;
+    Object.assign(params, e.params ?? {});
+    return { name: e.name, params };
+  };
+  const buildRetriever = (e: RetrieverEntry | undefined): BlockNode | null => {
+    if (!e) return null;
+    const node = mk("retriever", e.name, e.params ?? {});
+    if (e.inner) node.data.inner = subFromSpec(e.inner);
+    if (e.retrievers) node.data.retrievers = e.retrievers.map(subFromSpec);
+    return node;
+  };
 
   // Build nodes.
   const parser = single("parser");
   const chunker = single("chunker");
   const enrichers = chain("enrich");
   const reps = REPRESENTATIONS.map((k) => single(k)).filter((n): n is BlockNode => !!n);
-  const store = single("store");
-  const retriever = single("retriever");
+  const store = single("vector_store");
+  const retriever = buildRetriever(spec["retriever"] as RetrieverEntry | undefined);
   const refiners = chain("refine");
   const generator = single("generator");
   const blob = single("blob_store");

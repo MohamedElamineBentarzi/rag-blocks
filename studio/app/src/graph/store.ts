@@ -10,7 +10,7 @@ import {
 } from "@xyflow/react";
 import type { Manifest } from "../manifest/types";
 import { ManifestIndex } from "../manifest/load";
-import type { BlockNode, BlockEdge, Problem } from "./model";
+import type { BlockNode, BlockEdge, BlockData, Problem } from "./model";
 import { handleId, parseHandle } from "./ports";
 import { computeProblems, isValidConnection } from "./validate";
 import { endpointEdges, endpointNodes, isEndpointId, mergeEdges } from "./endpoints";
@@ -31,6 +31,7 @@ interface StudioState {
   setManifest: (m: Manifest) => void;
   addNode: (kind: string, name: string, position?: { x: number; y: number }) => void;
   updateParams: (id: string, params: Record<string, unknown>) => void;
+  updateData: (id: string, patch: Partial<BlockData>) => void;
   select: (id: string | null) => void;
   deleteSelected: () => void;
   onNodesChange: (changes: NodeChange<BlockNode>[]) => void;
@@ -78,12 +79,20 @@ export const useStudio = create<StudioState>((set, get) => {
         data: { kind, name, params },
       };
 
+      // Composite retriever: seed its nested sub-retriever(s) with a base one.
+      if (comp?.composite === "inner") {
+        const base = mIndex.baseRetrievers()[0];
+        if (base) node.data.inner = { name: base.name, params: mIndex.defaultParams("retriever", base.name) };
+      } else if (comp?.composite === "retrievers") {
+        node.data.retrievers = [];
+      }
+
       // Ensure the synthetic ChunkIndex exists whenever something that attaches
       // to it appears: a representation, a vector store, or an index-backed
       // block. The blob store attaches to the parser instead, not the index.
       const next = [...nodes, node];
       const needsIndex =
-        REPRESENTATION_KINDS.includes(kind) || kind === "store" || comp?.takes_index;
+        REPRESENTATION_KINDS.includes(kind) || kind === "vector_store" || comp?.takes_index;
       if (needsIndex && !next.some((n) => n.data.kind === "index")) {
         next.push(makeIndexNode(next.length));
       }
@@ -100,7 +109,7 @@ export const useStudio = create<StudioState>((set, get) => {
       } else if (indexNode) {
         if (REPRESENTATION_KINDS.includes(kind)) {
           nextEdges = addEdge(makeEdge(node.id, "Representation", indexNode.id, mIndex), nextEdges);
-        } else if (kind === "store") {
+        } else if (kind === "vector_store") {
           nextEdges = addEdge(makeEdge(node.id, "Store", indexNode.id, mIndex), nextEdges);
         } else if (comp?.takes_index) {
           nextEdges = addEdge(makeEdge(indexNode.id, "Index", node.id, mIndex), nextEdges);
@@ -116,6 +125,13 @@ export const useStudio = create<StudioState>((set, get) => {
       set((s) => ({
         nodes: s.nodes.map((n) =>
           n.id === id ? { ...n, data: { ...n.data, params } } : n,
+        ),
+      })),
+
+    updateData: (id, patch) =>
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === id ? { ...n, data: { ...n.data, ...patch } } : n,
         ),
       })),
 

@@ -167,7 +167,7 @@ def test_an_unknown_representation_fails_fast():
 
 
 def test_a_vector_store_from_the_spec_backs_the_index():
-    rag = PipelineBuilder().build({**DENSE, "store": {"name": "memory"}})
+    rag = PipelineBuilder().build({**DENSE, "vector_store": {"name": "memory"}})
     assert isinstance(rag.chunk_index._store, MemoryVectorStore)
 
 
@@ -183,6 +183,41 @@ def test_omitting_infra_keeps_the_builders_own_defaults():
     rag = PipelineBuilder().build(DENSE)
     assert isinstance(rag.chunk_index._store, MemoryVectorStore)
     assert rag.indexing.blob_store is None
+
+
+# -- composite retrievers: nested specs (DR-0001 v2) ----------------------
+
+
+def test_fusion_wraps_sub_retrievers_from_a_nested_spec():
+    rag = PipelineBuilder().build({
+        "embedder": {"name": "hashing"}, "lexical": {"name": "bm25"},
+        "retriever": {"name": "fusion", "retrievers": [
+            {"name": "index", "params": {"representation": "dense"}},
+            {"name": "index", "params": {"representation": "lexical"}},
+        ]},
+    })
+    assert rag.retriever.name == "fusion"
+    assert [r.name for r in rag.retriever.retrievers] == ["index", "index"]
+
+
+def test_hyde_wraps_an_inner_retriever_and_takes_the_generators_llm():
+    # `complete` comes from the generator (§7.6 seam), not the spec.
+    rag = PipelineBuilder().build({
+        "embedder": {"name": "hashing"}, "generator": {"name": "anthropic"},
+        "retriever": {"name": "hyde",
+                      "inner": {"name": "index", "params": {"representation": "dense"}}},
+    })
+    assert rag.retriever.name == "hyde"
+    assert rag.retriever.inner.name == "index"
+
+
+def test_a_query_shaping_retriever_without_an_llm_says_what_to_do():
+    with pytest.raises(ConfigError, match="LLM"):
+        PipelineBuilder().build({
+            "embedder": {"name": "hashing"},
+            "retriever": {"name": "hyde",
+                          "inner": {"name": "index", "params": {"representation": "dense"}}},
+        })
 
 
 # -- fail fast ------------------------------------------------------------

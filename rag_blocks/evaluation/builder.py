@@ -112,7 +112,10 @@ class PipelineBuilder:
         # in-memory) if given, else the builder's own factory. A fresh instance
         # per build either way (registry.create builds one), so trials never
         # share a store — the isolation invariant holds for both paths.
-        store = self._create("store", spec["store"], None) if "store" in spec else self.store_factory()
+        store = (
+            self._create("vector_store", spec["vector_store"], None)
+            if "vector_store" in spec else self.store_factory()
+        )
         index: Optional[ChunkIndex] = None
         if dense is not None or sparse is not None or lexical is not None:
             index = ChunkIndex(store, dense=dense, sparse=sparse, lexical=lexical)
@@ -130,9 +133,17 @@ class PipelineBuilder:
             "trace": self.trace,
             "fetch_k": self.fetch_k,
         }
-        for stage in ("parser", "chunker", "generator", "retriever"):
+        for stage in ("parser", "chunker", "generator"):
             if stage in spec:
                 kwargs[stage] = self._create(stage, spec[stage], index)
+        if "retriever" in spec:
+            # The retriever may be composite (fusion wraps retrievers; hyde /
+            # multi-query wrap one inner + shape the query with an LLM). The one
+            # thing a spec can't carry — that LLM — is the pipeline's own
+            # generator (§7.6's `generator.complete` seam), not a spec field.
+            kwargs["retriever"] = self._build_retriever(
+                spec["retriever"], index, _completion_seam(kwargs.get("generator"))
+            )
         for stage in CHAIN_STAGES:
             if stage in spec:
                 kwargs[stage] = self._chain(stage, spec[stage], index)
@@ -173,6 +184,46 @@ class PipelineBuilder:
         except ConfigError as exc:
             raise ConfigError(f"PipelineBuilder: {stage}={name!r}: {exc}") from exc
 
+    def _build_retriever(
+        self,
+        entry: dict,
+        index: Optional[ChunkIndex],
+        complete: Optional[Callable[[str], str]],
+    ) -> Any:
+        """A retriever, recursively — composites wrap other retrievers *as data*
+        (DR-0001 v2: retrievers wrapping retrievers, never new pipeline slots).
+
+        `fusion` carries a `retrievers: [<spec>, ...]` list; `hyde` / `multi-query`
+        carry an `inner: <spec>` and shape the query with an LLM. A base retriever
+        (`index` / `hybrid`) has neither and goes through `_create` (index-backed).
+        """
+        name, _ = _unpack("retriever", entry)
+        if "retrievers" in entry:  # fusion: fuse a list of sub-retrievers
+            subs = [
+                self._build_retriever(e, index, complete)
+                for e in _entry_list(entry["retrievers"])
+            ]
+            return self._compose(name, entry, retrievers=subs)
+        if "inner" in entry:  # hyde / multi-query: wrap one inner + an LLM
+            inner = self._build_retriever(entry["inner"], index, complete)
+            if complete is None:
+                raise ConfigError(
+                    f"PipelineBuilder: retriever={name!r} shapes the query with an "
+                    f"LLM, but the pipeline has none — add an LLM generator "
+                    f"(e.g. {{'generator': {{'name': 'anthropic'}}}})."
+                )
+            return self._compose(name, entry, inner=inner, complete=complete)
+        return self._create("retriever", entry, index)  # base: index / hybrid
+
+    def _compose(self, name: str, entry: dict, **wiring: Any) -> Any:
+        """Build a composite retriever from its already-built parts + its params."""
+        _, params = _unpack("retriever", entry)
+        cls = registry.get("retriever", name)
+        try:
+            return cls(**wiring, **params)
+        except (ConfigError, TypeError) as exc:
+            raise ConfigError(f"PipelineBuilder: retriever={name!r}: {exc}") from exc
+
     def _chain(
         self, stage: str, entries: Sequence[dict], index: Optional[ChunkIndex]
     ) -> list:
@@ -182,6 +233,23 @@ class PipelineBuilder:
                 f"{type(entries).__name__}"
             )
         return [self._create(stage, entry, index) for entry in entries]
+
+
+def _completion_seam(generator: Any) -> Optional[Callable[[str], str]]:
+    """The bare LLM completion a query-shaping retriever needs, taken from the
+    pipeline's generator (§7.6's `generator.complete` seam). `None` when the
+    generator has no LLM (the extractive default) — HyDE/MultiQuery then fail
+    with a clear message, since they cannot shape a query without one."""
+    complete = getattr(generator, "complete", None)
+    return complete if callable(complete) else None
+
+
+def _entry_list(value: Any) -> list:
+    if not isinstance(value, (list, tuple)):
+        raise ConfigError(
+            "PipelineBuilder: retriever.retrievers must be a list of retriever specs"
+        )
+    return list(value)
 
 
 def _takes_index(cls: type) -> bool:
@@ -255,6 +323,19 @@ def _validate_entry(stage: str, entry: Any) -> None:
             f"{stage}={entry['name']!r}: params must be a mapping, "
             f"got {type(params).__name__}"
         )
+    # Composite retrievers nest other retriever specs (fusion's `retrievers`,
+    # hyde/multi-query's `inner`) — validate them recursively, same shape.
+    inner = entry.get("inner")
+    if inner is not None:
+        _validate_entry(stage, inner)
+    subs = entry.get("retrievers")
+    if subs is not None:
+        if not isinstance(subs, (list, tuple)):
+            raise ConfigError(
+                f"{stage}={entry['name']!r}: retrievers must be a list of specs"
+            )
+        for sub in subs:
+            _validate_entry(stage, sub)
 
 
 def _unpack(stage: str, entry: dict) -> tuple[str, dict]:

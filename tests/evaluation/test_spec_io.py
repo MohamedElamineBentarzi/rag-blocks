@@ -162,7 +162,7 @@ def test_validate_accepts_infrastructure_keys():
     # store (vector_store) and blob_store are valid spec keys alongside stages.
     validate_spec({
         "embedder": {"name": "hashing"},
-        "store": {"name": "memory"},
+        "vector_store": {"name": "memory"},
         "blob_store": {"name": "local", "params": {"root": "/data"}},
     })
 

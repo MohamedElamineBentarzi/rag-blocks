@@ -68,7 +68,7 @@ STAGE_KINDS: Mapping[str, str] = {
 #: not a knob). A single built spec MAY carry them; `PipelineBuilder` wires them
 #: in, else falls back to its own `store_factory` / `blob_store` defaults.
 INFRA_KINDS: Mapping[str, str] = {
-    "store": "vector_store",
+    "vector_store": "vector_store",
     "blob_store": "blob_store",
 }
 

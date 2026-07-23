@@ -79,12 +79,17 @@ def test_index_retriever_exposes_its_constructor_param(manifest):
     assert "representation" in names
 
 
-def test_composites_are_marked_not_exportable(manifest):
-    for name in ("fusion", "hyde", "multi-query"):
+def test_composites_are_exportable_with_their_nesting_shape(manifest):
+    # fusion wraps a list of retrievers; hyde/multi-query wrap one + need an LLM.
+    fusion = _by_name(manifest, "fusion")
+    assert fusion["exportable"] is True
+    assert fusion["composite"] == "retrievers"
+    for name in ("hyde", "multi-query"):
         c = _by_name(manifest, name)
-        assert c["exportable"] is False
-        assert "not_exportable_reason" in c
-    assert _by_name(manifest, "fixed")["exportable"] is True
+        assert c["exportable"] is True
+        assert c["composite"] == "inner"
+        assert c["needs_llm"] is True
+    assert "composite" not in _by_name(manifest, "index")  # base retriever
 
 
 def test_optional_storage_backend_does_not_block_export(manifest):
@@ -100,8 +105,8 @@ def test_optional_storage_backend_does_not_block_export(manifest):
 def test_store_and_blob_store_are_blocks(manifest):
     # The infrastructure the ChunkIndex/pipeline is built on, now spec-expressible.
     names = {(c["kind"], c["name"]) for c in manifest["components"]}
-    assert ("store", "qdrant") in names
-    assert ("store", "memory") in names
+    assert ("vector_store", "qdrant") in names
+    assert ("vector_store", "memory") in names
     assert ("blob_store", "minio") in names
     assert ("blob_store", "local") in names
 
@@ -110,7 +115,7 @@ def test_index_gains_a_store_port_and_parser_a_blobstore_port(manifest):
     stage = {s["kind"]: s for s in manifest["stages"]}
     assert "Store" in stage["index"]["in"]        # Store -> ChunkIndex
     assert "BlobStore" in stage["parser"]["in"]   # BlobStore -> parser
-    assert stage["store"]["out"] == "Store"
+    assert stage["vector_store"]["out"] == "Store"
     assert stage["blob_store"]["out"] == "BlobStore"
 
 

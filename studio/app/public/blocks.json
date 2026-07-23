@@ -264,11 +264,11 @@
       "version": "0.2.0"
     },
     {
+      "composite": "retrievers",
       "doc": "Strategy interface: Query \u2192 ranked ScoredChunks.",
-      "exportable": false,
+      "exportable": true,
       "kind": "retriever",
       "name": "fusion",
-      "not_exportable_reason": "needs 'retrievers', which a flat spec can't express",
       "params": [
         {
           "default": "rrf",
@@ -333,11 +333,12 @@
       "version": "0.2.0"
     },
     {
+      "composite": "inner",
       "doc": "Hypothetical Document Embeddings: retrieve on an LLM-drafted answer.",
-      "exportable": false,
+      "exportable": true,
       "kind": "retriever",
       "name": "hyde",
-      "not_exportable_reason": "needs 'inner', which a flat spec can't express",
+      "needs_llm": true,
       "params": [],
       "takes_index": false,
       "version": "0.1.0"
@@ -359,11 +360,12 @@
       "version": "0.1.0"
     },
     {
+      "composite": "inner",
       "doc": "Expand the query into `n` phrasings, retrieve each, fuse (RAG-fusion).",
-      "exportable": false,
+      "exportable": true,
       "kind": "retriever",
       "name": "multi-query",
-      "not_exportable_reason": "needs 'inner', which a flat spec can't express",
+      "needs_llm": true,
       "params": [
         {
           "default": 4,
@@ -510,7 +512,7 @@
     {
       "doc": "Strategy interface: a named, typed, multi-vector upsert-and-search index.",
       "exportable": true,
-      "kind": "store",
+      "kind": "vector_store",
       "name": "memory",
       "params": [],
       "takes_index": false,
@@ -519,7 +521,7 @@
     {
       "doc": "Strategy interface: a named, typed, multi-vector upsert-and-search index.",
       "exportable": true,
-      "kind": "store",
+      "kind": "vector_store",
       "name": "qdrant",
       "params": [
         {
@@ -727,7 +729,7 @@
     {
       "chain": false,
       "in": [],
-      "kind": "store",
+      "kind": "vector_store",
       "out": "Store",
       "single": true
     },
