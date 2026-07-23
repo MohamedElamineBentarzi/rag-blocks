@@ -25,7 +25,6 @@ export function BlockNode({ id, data, selected }: NodeProps<BlockNodeType>) {
       className={`blocknode ${selected ? "selected" : ""} ${data.synthetic ? "synthetic" : ""}`}
       style={{ ["--stage" as string]: accent } as CSSProperties}
     >
-      <div className="accent" />
       <div className="body">
         <div className="kind">{data.kind}</div>
         <div className="name">{data.name}</div>

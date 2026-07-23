@@ -11,7 +11,7 @@ import {
 import type { Manifest } from "../manifest/types";
 import { ManifestIndex } from "../manifest/load";
 import type { BlockNode, BlockEdge, Problem } from "./model";
-import { parseHandle } from "./ports";
+import { handleId, parseHandle } from "./ports";
 import { computeProblems, isValidConnection } from "./validate";
 
 const REPRESENTATION_KINDS = ["embedder", "sparse", "lexical"];
@@ -78,12 +78,25 @@ export const useStudio = create<StudioState>((set, get) => {
 
       // Ensure the synthetic ChunkIndex exists whenever a representation or an
       // index-backed block appears — the two things that need it.
-      let next = [...nodes, node];
+      const next = [...nodes, node];
       const needsIndex = REPRESENTATION_KINDS.includes(kind) || comp?.takes_index;
       if (needsIndex && !next.some((n) => n.data.kind === "index")) {
         next.push(makeIndexNode(next.length));
       }
-      set({ ...withProblems(next, edges), selectedId: node.id });
+
+      // Auto-wire so the index is never an orphan on the canvas: a new
+      // representation feeds it; a new index-backed block reads from it. The
+      // user can still rewire freely — this is just a sensible default edge.
+      let nextEdges = edges;
+      const indexNode = next.find((n) => n.data.kind === "index");
+      if (indexNode) {
+        if (REPRESENTATION_KINDS.includes(kind)) {
+          nextEdges = addEdge(makeEdge(node.id, "Representation", indexNode.id, mIndex), nextEdges);
+        } else if (comp?.takes_index) {
+          nextEdges = addEdge(makeEdge(indexNode.id, "Index", node.id, mIndex), nextEdges);
+        }
+      }
+      set({ ...withProblems(next, nextEdges), selectedId: node.id });
     },
 
     updateParams: (id, params) =>
@@ -147,6 +160,22 @@ export const useStudio = create<StudioState>((set, get) => {
 // node uses the drop point instead.
 function tile(i: number): { x: number; y: number } {
   return { x: 60 + (i % 4) * 260, y: 70 + Math.floor(i / 4) * 168 };
+}
+
+function makeEdge(
+  source: string,
+  type: string,
+  target: string,
+  mIndex: ManifestIndex,
+): BlockEdge {
+  return {
+    id: `e-${source}-${target}-${type}`,
+    source,
+    target,
+    sourceHandle: handleId("out", type),
+    targetHandle: handleId("in", type),
+    style: { stroke: mIndex.typeColor(type) },
+  };
 }
 
 function makeIndexNode(order: number): BlockNode {

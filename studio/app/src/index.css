@@ -332,13 +332,8 @@ button.primary:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 0 26px -6px var(--accent), var(--shadow-node);
 }
-.blocknode .accent {
-  height: 3px;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: linear-gradient(90deg, var(--stage), color-mix(in srgb, var(--stage) 40%, transparent));
-}
 .blocknode .body {
-  padding: 12px 16px 13px;
+  padding: 13px 16px;
   display: flex;
   flex-direction: column;
   gap: 3px;
