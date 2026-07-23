@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -14,6 +14,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useStudio } from "./graph/store";
 import { BlockNode } from "./graph/BlockNode";
+import { EndpointNode } from "./graph/EndpointNode";
 import { isValidConnection as checkConnection } from "./graph/validate";
 import type { BlockNode as BlockNodeType, BlockEdge } from "./graph/model";
 import { Palette } from "./panels/Palette";
@@ -27,7 +28,7 @@ import { stageAccent } from "./theme/tokens";
 
 // Defined once, outside the component: React Flow warns (and rerenders) if
 // nodeTypes is a fresh object each render.
-const nodeTypes = { block: BlockNode };
+const nodeTypes = { block: BlockNode, endpoint: EndpointNode };
 
 export default function App() {
   return (
@@ -50,9 +51,24 @@ function Studio() {
   const select = useStudio((s) => s.select);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
+  // The panels are sliding glass drawers, toggled from the toolbar.
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+
   useEffect(() => {
-    loadManifest().then(setManifest).catch((e) => alert(String(e)));
-  }, [setManifest]);
+    loadManifest()
+      .then((m) => {
+        setManifest(m);
+        setTimeout(() => fitView({ padding: 0.25 }), 60); // frame the endpoints
+      })
+      .catch((e) => alert(String(e)));
+  }, [setManifest, fitView]);
+
+  // Reframe after a drawer slides, so the canvas resize keeps everything in view.
+  useEffect(() => {
+    const t = setTimeout(() => fitView({ padding: 0.2 }), 320);
+    return () => clearTimeout(t);
+  }, [leftOpen, rightOpen, fitView]);
 
   // Only offer a connection to React Flow if the contract types match — this is
   // where the "invalid connections refuse to form" behavior lives.
@@ -75,49 +91,69 @@ function Studio() {
 
   return (
     <div className="app">
-      <Toolbar onImported={() => setTimeout(() => fitView({ padding: 0.2 }), 0)} />
-      <Palette />
-      <div className="canvas" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        <ReactFlow<BlockNodeType, BlockEdge>
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onConnectStart={(_, p) => onConnectStart(p)}
-          onConnectEnd={onConnectEnd}
-          isValidConnection={isValidConnection}
-          onNodeClick={(_, node) => select(node.id)}
-          onPaneClick={() => select(null)}
-          fitView
-          proOptions={{ hideAttribution: true }}
-          defaultEdgeOptions={{ animated: true }}
-        >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={22}
-            size={1}
-            color="rgba(255,255,255,0.06)"
-          />
-          <Controls showInteractive={false} position="top-left" />
-          <MiniMap
-            pannable
-            zoomable
-            nodeStrokeWidth={0}
-            nodeColor={(n) => stageAccent[(n.data as { kind: string }).kind] ?? "#5b5b74"}
-            maskColor="rgba(8,8,14,0.6)"
-            style={{ background: "transparent" }}
-          />
-        </ReactFlow>
-        <Problems />
+      <Toolbar
+        leftOpen={leftOpen}
+        rightOpen={rightOpen}
+        onToggleLeft={() => setLeftOpen((v) => !v)}
+        onToggleRight={() => setRightOpen((v) => !v)}
+        onImported={() => setTimeout(() => fitView({ padding: 0.2 }), 0)}
+      />
+      <div className="stage">
+        <aside className={`drawer left ${leftOpen ? "open" : ""}`}>
+          <Palette />
+        </aside>
+
+        <div className="canvas" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+          <ReactFlow<BlockNodeType, BlockEdge>
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onConnectStart={(_, p) => onConnectStart(p)}
+            onConnectEnd={onConnectEnd}
+            isValidConnection={isValidConnection}
+            onNodeClick={(_, node) => select(node.id)}
+            onPaneClick={() => select(null)}
+            fitView
+            proOptions={{ hideAttribution: true }}
+            defaultEdgeOptions={{ animated: true }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={22}
+              size={1}
+              color="rgba(255,255,255,0.06)"
+            />
+            <Controls showInteractive={false} position="bottom-left" />
+            <MiniMap
+              pannable
+              zoomable
+              nodeStrokeWidth={0}
+              nodeColor={(n) => stageAccent[(n.data as { kind: string }).kind] ?? "#5b5b74"}
+              maskColor="rgba(8,8,14,0.6)"
+              style={{ background: "transparent" }}
+            />
+          </ReactFlow>
+          <Problems />
+        </div>
+
+        <aside className={`drawer right ${rightOpen ? "open" : ""}`}>
+          <Inspector />
+        </aside>
       </div>
-      <Inspector />
     </div>
   );
 }
 
-function Toolbar({ onImported }: { onImported: () => void }) {
+function Toolbar(props: {
+  leftOpen: boolean;
+  rightOpen: boolean;
+  onToggleLeft: () => void;
+  onToggleRight: () => void;
+  onImported: () => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const setGraph = useStudio((s) => s.setGraph);
   const clear = useStudio((s) => s.clear);
@@ -155,11 +191,19 @@ function Toolbar({ onImported }: { onImported: () => void }) {
     }
     const { nodes, edges } = importSpec(spec as Record<string, unknown>, mIndex);
     setGraph(nodes, edges);
-    onImported();
+    props.onImported();
   };
 
   return (
     <div className="toolbar">
+      <button
+        className={`icon-btn ${props.leftOpen ? "active" : ""}`}
+        onClick={props.onToggleLeft}
+        title="Toggle blocks panel"
+        aria-label="Toggle blocks panel"
+      >
+        <PanelIcon side="left" />
+      </button>
       <div className="title">
         <span className="dot" />
         <span className="brand">rag-blocks</span>
@@ -169,6 +213,14 @@ function Toolbar({ onImported }: { onImported: () => void }) {
       <button onClick={() => { if (confirm("Clear the canvas?")) clear(); }}>Clear</button>
       <button onClick={() => fileRef.current?.click()}>Import</button>
       <button className="primary" onClick={onExport}>Export spec</button>
+      <button
+        className={`icon-btn ${props.rightOpen ? "active" : ""}`}
+        onClick={props.onToggleRight}
+        title="Toggle inspector panel"
+        aria-label="Toggle inspector panel"
+      >
+        <PanelIcon side="right" />
+      </button>
       <input
         ref={fileRef}
         type="file"
@@ -181,6 +233,16 @@ function Toolbar({ onImported }: { onImported: () => void }) {
         }}
       />
     </div>
+  );
+}
+
+function PanelIcon({ side }: { side: "left" | "right" }) {
+  const x = side === "left" ? 5.5 : 10.5;
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="2.2" />
+      <line x1={x} y1="2.5" x2={x} y2="13.5" />
+    </svg>
   );
 }
 

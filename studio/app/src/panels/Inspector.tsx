@@ -20,6 +20,17 @@ export function Inspector() {
       </div>
     );
   }
+  if (node.data.kind === "endpoint") {
+    return (
+      <div className="inspector">
+        <div className="empty">
+          <b>{String(node.data.label)}</b> is a pipeline endpoint — where{" "}
+          {node.data.epDir === "in" ? "the answer comes out" : "data goes in"}. It's always on
+          the canvas and isn't part of the exported spec.
+        </div>
+      </div>
+    );
+  }
   if (node.data.kind === "index") {
     return (
       <div className="inspector">

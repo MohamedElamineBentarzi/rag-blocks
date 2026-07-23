@@ -13,6 +13,7 @@ import { ManifestIndex } from "../manifest/load";
 import type { BlockNode, BlockEdge, Problem } from "./model";
 import { handleId, parseHandle } from "./ports";
 import { computeProblems, isValidConnection } from "./validate";
+import { endpointEdges, endpointNodes, isEndpointId, mergeEdges } from "./endpoints";
 
 const REPRESENTATION_KINDS = ["embedder", "sparse", "lexical"];
 
@@ -60,7 +61,8 @@ export const useStudio = create<StudioState>((set, get) => {
     pendingSourceType: null,
     problems: [],
 
-    setManifest: (m) => set({ manifest: m, mIndex: new ManifestIndex(m) }),
+    setManifest: (m) =>
+      set({ manifest: m, mIndex: new ManifestIndex(m), nodes: endpointNodes() }),
 
     addNode: (kind, name, position) => {
       const { mIndex, nodes, edges } = get();
@@ -104,6 +106,9 @@ export const useStudio = create<StudioState>((set, get) => {
           nextEdges = addEdge(makeEdge(indexNode.id, "Index", node.id, mIndex), nextEdges);
         }
       }
+      // Tie the endpoints in too (Source->parser, Query->retriever, generator->
+      // Answer) so adding a parser/retriever/generator connects to its terminal.
+      nextEdges = mergeEdges(nextEdges, endpointEdges(next, mIndex));
       set({ ...withProblems(next, nextEdges), selectedId: node.id });
     },
 
@@ -118,7 +123,7 @@ export const useStudio = create<StudioState>((set, get) => {
 
     deleteSelected: () => {
       const { selectedId, nodes, edges } = get();
-      if (!selectedId) return;
+      if (!selectedId || isEndpointId(selectedId)) return; // endpoints are fixed
       const next = nodes.filter((n) => n.id !== selectedId);
       const nextEdges = edges.filter(
         (e) => e.source !== selectedId && e.target !== selectedId,
@@ -128,7 +133,12 @@ export const useStudio = create<StudioState>((set, get) => {
 
     onNodesChange: (changes) =>
       set((s) => {
-        const nodes = applyNodeChanges(changes, s.nodes);
+        // Endpoints can be moved but never removed (belt-and-suspenders beside
+        // their `deletable: false`).
+        const safe = changes.filter(
+          (c) => !(c.type === "remove" && isEndpointId(c.id)),
+        );
+        const nodes = applyNodeChanges(safe, s.nodes);
         return withProblems(nodes, s.edges);
       }),
 
@@ -157,10 +167,17 @@ export const useStudio = create<StudioState>((set, get) => {
     },
     onConnectEnd: () => set({ pendingSourceType: null }),
 
-    setGraph: (nodes, edges) =>
-      set({ ...withProblems(nodes, edges), selectedId: null }),
+    setGraph: (nodes, edges) => {
+      // An imported graph never carries the endpoints — prepend them and wire
+      // them to the pipeline, so the terminals are always present and connected.
+      const mIndex = get().mIndex;
+      const all = [...endpointNodes(), ...nodes];
+      const wired = mIndex ? mergeEdges(edges, endpointEdges(all, mIndex)) : edges;
+      set({ ...withProblems(all, wired), selectedId: null });
+    },
 
-    clear: () => set({ nodes: [], edges: [], selectedId: null, problems: [] }),
+    clear: () =>
+      set({ nodes: endpointNodes(), edges: [], selectedId: null, problems: [] }),
   };
 });
 
